@@ -1,0 +1,29 @@
+{
+  "name": "tele-captcha",
+  "version": "1.0.0",
+  "main": "functions/server.js",
+  "repository": "https://github.com/willywill/sharex-telegram-image-uploader.git",
+  "author": "Will Germany <germany.william@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "nodemon server-local.js",
+    "build": "netlify-lambda build express",
+    "lint": "./node_modules/.bin/eslint \"**/*.js\""
+  },
+  "dependencies": {
+    "canvas": "^2.6.1"
+  },
+  "devDependencies": {
+    "body-parser": "^1.19.0",
+    "dotenv": "^8.2.0",
+    "eslint": "^7.4.0",
+    "eslint-config-airbnb-base": "^14.2.0",
+    "eslint-plugin-import": "^2.16.0",
+    "express": "^4.17.1",
+    "lodash": "^4.17.19",
+    "netlify-lambda": "^1.6.3",
+    "node-telegram-bot-api": "^0.50.0",
+    "nodemon": "^2.0.4",
+    "serverless-http": "^2.3.0"
+  }
+}
