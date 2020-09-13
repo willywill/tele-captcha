@@ -27,6 +27,11 @@ const express = require('express');
 const path = require('path');
 const serverless = require('serverless-http');
 const get = require('lodash/fp/get');
+const entries = require('lodash/fp/entries');
+const addMinutes = require('date-fns/addMinutes');
+const isAfter = require('date-fns/isAfter');
+const parseISO = require('date-fns/parseISO');
+
 const captcha = require('./captcha');
 const getAnswerOptions = require('./answers');
 
@@ -70,27 +75,33 @@ router.post(`/bot${config.telegram.botToken}`, (req, res) => {
 /*
   Bot Hooks & Logic
 */
-// TODO: Make it clear to the user that only the person entering the chat should be answering - without sending chat-wide, or do nothing
-// TODO: Make it so that when the target user clicks the item, it tells the group they answered correctly, maybe a welcome message
-// TODO: Make it so that when the target user clicks the wrong item, it tells the group why they are being removed
-// TODO: Make it so that the target user has 3 minutes to answer or else they are banned - how to do this without state??
+
+const globalJoinedUserStatusCache = {};
+const MINUTES_FOR_OPERATION = 2;
+
+// This background job is responsible for the following:
+const backgroundJob = () => {
+  // Look at the current list of userIds and kick any users that did not answer the captcha
+  entries(globalJoinedUserStatusCache).forEach(([userId, { chatId, didAnswerCaptchaCorrectly, joinedAt, fullName = 'User' }]) => {
+    const now = new Date().toISOString();
+    // Kick the user if they did not answer the captcha corrrectly within two minutes
+    if (!didAnswerCaptchaCorrectly && isAfter(parseISO(now), addMinutes(parseISO(joinedAt), MINUTES_FOR_OPERATION))) {
+      bot.kickChatMember(chatId, userId);
+      // Send a message to the entire chat that the user was kicked because they did not answer the captcha in time.
+      bot.sendMessage(chatId, `${fullName} was removed due to not answering the captcha in time.`);
+
+      delete globalJoinedUserStatusCache[userId];
+    }
+  });
+};
+
 const getFromId = get('from.id');
 const getChatId = get('chat.id');
 
-// bot.on('message', msg => {
-//   try {
-//     // Generate the captcha
-//     const { captchaImage, numbers } = captcha(200, 200);
-//     // Convert the image to a buffer
-//     const captchaImageBuffer = captchaImage.toBuffer('image/png');
-
-//     // Send the image
-//     bot.sendPhoto(msg.chat.id, captchaImageBuffer, getAnswerOptions(numbers));
-//   }
-//   catch (error) {
-//     console.log(error);
-//   }
-// });
+if (!isProduction) {
+  // Check and log errors on local dev
+  bot.on('polling_error', (err) => console.log(err));
+}
 
 // Testing purposes
 bot.onText(/test/g, (message) => {
@@ -114,29 +125,64 @@ bot.onText(/test/g, (message) => {
   }
 });
 
+// The function that gets called with the payload when a user answers the captcha
 bot.on('callback_query', ({ message, data, ...rest } = {}) => {
-  const fromId = getFromId(rest);
-  const chatId = getChatId(message);
+  const userThatAnswered = getFromId(rest);
+  const parsedData = JSON.parse(data);
 
-  if (fromId !== 73053115) return;
+  const chatId = parsedData?.c;
+  const isAnsweredCorrectly = parsedData?.a;
+  const userTheCaptchaWasSentFor = parsedData?.s;
 
-  if (data && data === 'true') {
-    bot.sendMessage(chatId, 'Successful');
+  // Make sure that the user is the one this captcha is for, and that they answered before marking them as have answered correctly
+  if (isAnsweredCorrectly && userTheCaptchaWasSentFor === userThatAnswered) {
+    globalJoinedUserStatusCache[userThatAnswered].didAnswerCaptchaCorrectly = true;
   }
-  else if (data && data === 'false') {
-    bot.sendMessage(chatId, 'Failure');
-  }
-  else {
-    bot.sendMessage(chatId, 'Something went wrong');
+
+  // If the user answered incorrectly, immediately kick them from the group, and remove them from the cache
+  if (!isAnsweredCorrectly && userTheCaptchaWasSentFor === userThatAnswered) {
+    bot.kickChatMember(chatId, userThatAnswered);
+
+    const userTheCaptchaWasSentForFullName = globalJoinedUserStatusCache[userThatAnswered]?.fullName;
+    // Send a message to the entire chat that the user was kicked because they did not answer the captcha correctly.
+    bot.sendMessage(chatId, `${userTheCaptchaWasSentForFullName || 'User'} was removed due to not answering the captcha correctly.`);
+
+    delete globalJoinedUserStatusCache[userThatAnswered];
   }
 });
 
-bot.on('new_chat_members', (message) => {
-  const chatId = getChatId(message);
-  console.log(message);
-  // eslint-disable-next-line max-len
-  bot.sendMessage(chatId, 'Welcome! Please tell us your PC specs. (NOTE: In the future this bot will auto-kick you if you do not respond to the captcha or respond incorrectly.)');
+// When a new chat member joins
+bot.on('new_chat_members', (data) => {
+  // Get the joined users details needed to store in the cache
+  const newMembers = data?.new_chat_members || [];
+  // ChatId the group member(s) just joined
+  const chatId = data?.chat?.id;
+  // Current timestamp
+  const joinedAt = new Date().toISOString();
+
+  newMembers.forEach(member => {
+    // Store the chatId the user just joined, and the time that they joined, initially mark them as not answering correctly of course
+    globalJoinedUserStatusCache[member?.id] = {
+      didAnswerCaptchaCorrectly: false,
+      joinedAt,
+      chatId,
+      fullName: `${member?.first_name} ${member?.last_name}`,
+    };
+
+    // Reply to the joined message with the captcha
+    const replyMessageId = data?.message_id;
+    // Generate the captcha
+    const { captchaImage, numbers } = captcha(200, 100);
+    // Convert the image to a buffer
+    const captchaImageBuffer = captchaImage.toBuffer('image/png');
+    // Send the image
+    bot.sendPhoto(chatId, captchaImageBuffer, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id }));
+  });
 });
+
+// Run the background job every 2 minutes
+setInterval(backgroundJob, 1000 * 60 * MINUTES_FOR_OPERATION);
+
 /*
   END - Bot Hooks & Logic
 */
@@ -144,7 +190,7 @@ bot.on('new_chat_members', (message) => {
 /*
   Application Exports - END
 */
-if (process.env.NODE_ENV !== 'development') {
+if (isProduction) {
   app.use('/.netlify/functions/server', router); // Path must route to lambda
   app.use('/', (req, res) => res.sendFile(path.join(__dirname, '../index.html')));
 }
