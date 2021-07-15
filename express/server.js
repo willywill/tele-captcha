@@ -32,7 +32,7 @@ const addMinutes = require('date-fns/addMinutes');
 const isAfter = require('date-fns/isAfter');
 const parseISO = require('date-fns/parseISO');
 
-const captcha = require('./captcha');
+const { simpleCaptcha } = require('./captcha');
 const getAnswerOptions = require('./answers');
 
 const app = express();
@@ -96,7 +96,7 @@ const backgroundJob = () => {
 };
 
 const getFromId = get('from.id');
-const getChatId = get('chat.id');
+// const getChatId = get('chat.id');
 
 if (!isProduction) {
   // Check and log errors on local dev
@@ -104,26 +104,22 @@ if (!isProduction) {
 }
 
 // Testing purposes
-bot.onText(/test/g, (message) => {
-  const fromId = getFromId(message);
-  const chatId = getChatId(message);
+// bot.onText(/test/gi, (message) => {
+//   const fromId = getFromId(message);
+//   const chatId = getChatId(message);
 
-  console.log(fromId);
-
-  if (fromId === 73053115) {
-    try {
-      // Generate the captcha
-      const { captchaImage, numbers } = captcha(200, 100);
-      // Convert the image to a buffer
-      const captchaImageBuffer = captchaImage.toBuffer('image/png');
-      // Send the image
-      bot.sendPhoto(chatId, captchaImageBuffer, getAnswerOptions(numbers));
-    }
-    catch (error) {
-      console.log(error);
-    }
-  }
-});
+//   if (fromId === 73053115) {
+//     try {
+//       // Generate the captcha using numbers
+//       const { numbers, text } = simpleCaptcha();
+//       // Send the message with the captcha
+//       bot.sendMessage(chatId, text, getAnswerOptions({ numbers, chatId, useHtml: true }));
+//     }
+//     catch (error) {
+//       console.log(error);
+//     }
+//   }
+// });
 
 // The function that gets called with the payload when a user answers the captcha
 bot.on('callback_query', ({ message, data, ...rest } = {}) => {
@@ -166,17 +162,26 @@ bot.on('new_chat_members', (data) => {
       didAnswerCaptchaCorrectly: false,
       joinedAt,
       chatId,
-      fullName: `${member?.first_name} ${member?.last_name}`,
+      fullName: `${member?.first_name} ${member?.last_name || ''}`,
     };
 
     // Reply to the joined message with the captcha
     const replyMessageId = data?.message_id;
-    // Generate the captcha
-    const { captchaImage, numbers } = captcha(200, 100);
-    // Convert the image to a buffer
-    const captchaImageBuffer = captchaImage.toBuffer('image/png');
-    // Send the image
-    bot.sendPhoto(chatId, captchaImageBuffer, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id }));
+
+    // NOTE: Uncomment below for image captchas, and reinstall node-canvas and use it in the captcha.js file
+    /*
+      // Generate the captcha
+      const { captchaImage, numbers } = captcha(200, 100);
+      // Convert the image to a buffer
+      const captchaImageBuffer = captchaImage.toBuffer('image/png');
+      // Send the image
+      bot.sendPhoto(chatId, captchaImageBuffer, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id }));
+    */
+
+    // Generate the captcha using numbers
+    const { numbers, text } = simpleCaptcha();
+    // Send the message with the captcha
+    bot.sendMessage(chatId, text, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id, useHtml: true }));
   });
 });
 

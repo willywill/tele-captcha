@@ -6,12 +6,10 @@
   "author": "Will Germany <germany.william@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "start": "nodemon server-local.js",
+    "start": "node server-local.js",
+    "start:dev": "nodemon server-local.js",
     "build": "netlify-lambda build express",
     "lint": "./node_modules/.bin/eslint \"**/*.js\""
-  },
-  "dependencies": {
-    "canvas": "^2.6.1"
   },
   "devDependencies": {
     "body-parser": "^1.19.0",
@@ -26,5 +24,6 @@
     "node-telegram-bot-api": "^0.50.0",
     "nodemon": "^2.0.4",
     "serverless-http": "^2.3.0"
-  }
+  },
+  "dependencies": {}
 }

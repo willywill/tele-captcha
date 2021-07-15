@@ -8,9 +8,11 @@ const generateRightAndWrongAnswers = ([num1, num2]) => ({
   wrongAnswer2: num1 + num2 - randomInt([1, 2]),
 });
 
-const getAnswerOptions = ({ replyMessageId, numbers, sentFor, chatId }) => {
+const getAnswerOptions = ({ replyMessageId, numbers, sentFor, chatId, useHtml = false }) => {
   const { rightAnswer, wrongAnswer1, wrongAnswer2 } = generateRightAndWrongAnswers(numbers);
+  const htmlFormatting = useHtml ? { parse_mode: 'HTML' } : {};
   return {
+    ...htmlFormatting,
     reply_to_message_id: replyMessageId,
     reply_markup: JSON.stringify({
       inline_keyboard: [
