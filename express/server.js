@@ -214,7 +214,7 @@ bot.on('new_chat_members', (data) => {
   });
 });
 
-// Run the background job every 2 minutes
+// Run the background job every `MINUTES_FOR_OPERATION` minutes
 setInterval(backgroundJob, (1000 * 60 * MINUTES_FOR_OPERATION) / 2);
 
 /*
