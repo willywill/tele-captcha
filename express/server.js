@@ -84,10 +84,21 @@ const getFullName = member => (member?.last_name ? `${member.first_name} ${membe
 // This background job is responsible for the following:
 const backgroundJob = () => {
   // Look at the current list of userIds and kick any users that did not answer the captcha
-  entries(globalJoinedUserStatusCache).forEach(([userId, { chatId, didAnswerCaptchaCorrectly, joinedAt, fullName = 'User' }]) => {
+  entries(globalJoinedUserStatusCache).forEach(([userId, {
+    chatId,
+    didAnswerCaptchaCorrectly,
+    joinedAt,
+    fullName = 'User',
+    captchaMessageId,
+  }]) => {
     const now = new Date().toISOString();
-    // Kick the user if they did not answer the captcha correctly within two minutes
+    // Kick the user if they did not answer the captcha correctly within X minutes
     if (!didAnswerCaptchaCorrectly && isAfter(parseISO(now), addMinutes(parseISO(joinedAt), MINUTES_FOR_OPERATION))) {
+      // Delete the captcha message if we have a reference in the cache
+      if (captchaMessageId) {
+        bot.deleteMessage(chatId, captchaMessageId);
+      }
+
       bot.kickChatMember(chatId, userId);
       // Send a message to the entire chat that the user was kicked because they did not answer the captcha in time.
       bot.sendMessage(chatId, `${fullName} was removed due to not answering the captcha in time.`);
@@ -135,11 +146,21 @@ bot.on('callback_query', ({ message, data, ...rest } = {}) => {
   // Make sure that the user is the one this captcha is for, and that they answered before marking them as have answered correctly
   if (isAnsweredCorrectly && userTheCaptchaWasSentFor === userThatAnswered) {
     globalJoinedUserStatusCache[userThatAnswered].didAnswerCaptchaCorrectly = true;
+
+    // Delete the captcha message if we have a reference in the cache
+    if (globalJoinedUserStatusCache[userThatAnswered].captchaMessageId) {
+      bot.deleteMessage(chatId, globalJoinedUserStatusCache[userThatAnswered].captchaMessageId);
+    }
   }
 
   // If the user answered incorrectly, immediately kick them from the group, and remove them from the cache
   if (!isAnsweredCorrectly && userTheCaptchaWasSentFor === userThatAnswered) {
     bot.kickChatMember(chatId, userThatAnswered);
+
+    // Delete the captcha message if we have a reference in the cache
+    if (globalJoinedUserStatusCache[userThatAnswered].captchaMessageId) {
+      bot.deleteMessage(chatId, globalJoinedUserStatusCache[userThatAnswered].captchaMessageId);
+    }
 
     const userTheCaptchaWasSentForFullName = globalJoinedUserStatusCache[userThatAnswered]?.fullName;
     // Send a message to the entire chat that the user was kicked because they did not answer the captcha correctly.
@@ -183,7 +204,13 @@ bot.on('new_chat_members', (data) => {
     // Generate the captcha using numbers
     const { numbers, text } = simpleCaptcha();
     // Send the message with the captcha
-    bot.sendMessage(chatId, text, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id, useHtml: true }));
+    bot.sendMessage(chatId, text, getAnswerOptions({ numbers, replyMessageId, chatId, sentFor: member?.id, useHtml: true }))
+      .then((result) => {
+        // Store this message id in the cache, so we can delete the message later
+        if (result?.message_id) {
+          globalJoinedUserStatusCache[member?.id].captchaMessageId = result.message_id;
+        }
+      });
   });
 });
 
