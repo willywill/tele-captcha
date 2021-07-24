@@ -72,7 +72,7 @@ const captcha = (width, height) => {
 // This captcha method uses just the numbers and no images for the verification process
 const simpleCaptcha = () => {
   // TODO: Pass the time in as a param
-  const timeLimitInMinutes = 2;
+  const timeLimitInMinutes = 5;
   const { numbers, text } = randomMathPrompt();
   return {
     numbers,
