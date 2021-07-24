@@ -77,14 +77,16 @@ router.post(`/bot${config.telegram.botToken}`, (req, res) => {
 */
 
 const globalJoinedUserStatusCache = {};
-const MINUTES_FOR_OPERATION = 2;
+const MINUTES_FOR_OPERATION = 5;
+
+const getFullName = member => (member?.last_name ? `${member.first_name} ${member.last_name}` : member.first_name);
 
 // This background job is responsible for the following:
 const backgroundJob = () => {
   // Look at the current list of userIds and kick any users that did not answer the captcha
   entries(globalJoinedUserStatusCache).forEach(([userId, { chatId, didAnswerCaptchaCorrectly, joinedAt, fullName = 'User' }]) => {
     const now = new Date().toISOString();
-    // Kick the user if they did not answer the captcha corrrectly within two minutes
+    // Kick the user if they did not answer the captcha correctly within two minutes
     if (!didAnswerCaptchaCorrectly && isAfter(parseISO(now), addMinutes(parseISO(joinedAt), MINUTES_FOR_OPERATION))) {
       bot.kickChatMember(chatId, userId);
       // Send a message to the entire chat that the user was kicked because they did not answer the captcha in time.
@@ -162,7 +164,7 @@ bot.on('new_chat_members', (data) => {
       didAnswerCaptchaCorrectly: false,
       joinedAt,
       chatId,
-      fullName: `${member?.first_name} ${member?.last_name || ''}`,
+      fullName: getFullName(member),
     };
 
     // Reply to the joined message with the captcha
@@ -186,7 +188,7 @@ bot.on('new_chat_members', (data) => {
 });
 
 // Run the background job every 2 minutes
-setInterval(backgroundJob, 1000 * 60 * MINUTES_FOR_OPERATION);
+setInterval(backgroundJob, (1000 * 60 * MINUTES_FOR_OPERATION) / 2);
 
 /*
   END - Bot Hooks & Logic
